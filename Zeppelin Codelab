@@ -1,0 +1,335 @@
+# Cloud Dataproc Zeppelin Codelab
+
+## Introduction
+
+Apache Spark can be used for interactive data science -- not just batch
+processing. This is a quick introduction to [Apache
+Zeppelin](https://zeppelin.apache.org/), which is a web-based interface for data
+science. It supports Spark, Python, and even BigQuery. Today, we're going to run
+through Zeppelin's builtin tutorial for Scala Spark and Spark SQL.
+
+## Create a cluster
+
+```bash
+gcloud config set project <your-project>
+gcloud config set compute/zone us-central1-f
+gcloud config set compute/region us-central1
+```
+
+```bash
+gcloud dataproc clusters create zeppelin --initialization-actions gs://dataproc-initialization-actions/zeppelin/zeppelin.sh
+```
+
+## Open the Zeppelin UI
+
+Note: If you have any issues accessing the UI check the [Troubleshooting
+section](#appendix-troubleshooting) or contact karthikpal@.
+
+The
+[instructions](https://cloud.google.com/dataproc/docs/concepts/cluster-web-interfaces)
+vary by OS. Note that this is not supported on corp Chromebooks, which cannot be
+configured to use a proxy other than UberProxy.
+
+**On Linux (in two terminals)**:
+
+Terminal 1:
+
+```bash
+gcloud compute ssh zeppelin-m --ssh-flag="-nND 1080"
+```
+
+Terminal 2:
+
+```bash
+/usr/bin/google-chrome --proxy-server="socks5://localhost:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost" --user-data-dir=/tmp http://zeppelin-m:8080
+```
+
+**On Mac (in two terminals)**:
+
+Terminal 1:
+
+```bash
+gcloud compute ssh zeppelin-m --ssh-flag="-nND 1080"
+```
+
+Terminal 2:
+
+```
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --proxy-server="socks5://localhost:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost" --user-data-dir=/tmp http://zeppelin-m:8080
+```
+
+If the previous commands succeeded, a new Chrome window should have popped up.
+If not, see the Appendix below for debugging tips.
+
+You will see this error until BeyondCorp is disabled. If you do not see the
+error initially, you may see it when navigating to another page.
+
+![Not found](https://screenshot.googleplex.com/8KboPMoNixi.png)
+
+**You must disable BeyondCorp and set it to "Off: System/Alternative". This way,
+Chrome will respect the SOCKS proxy we configured it to use.**
+
+![System/Alternative](https://screenshot.googleplex.com/jU2kfMmXUL4.png)
+
+**You should now be able to view the Zeppelin UI!**
+
+![Yay](https://screenshot.googleplex.com/y0UB4MJk4vD.png)
+
+## Walk through builtin tutorial
+
+![Click on tutorial](https://screenshot.googleplex.com/Cs7TgroWhHZ.png)
+
+Click "Save" to enable all interpreters.
+
+![Click Save](https://screenshot.googleplex.com/xzcX3KqMQrx.png)
+
+Then, click the "play" button at the top to run the whole notebook. You can also
+use the play button on a note to just re-run that note.
+
+![Run notebook](https://screenshot.googleplex.com/D3ORfAtoMiF.png)
+
+### Play with the charts
+
+We can change the max age to 100 in the first chart. Change:
+
+```
+where age < 30
+```
+
+to
+
+```
+where age < 100
+```
+
+Then, hit the play button (on the note) to regenerate the graph.
+
+![Max age 100 graph](https://screenshot.googleplex.com/oyi24DG2LjS.png)
+
+We can also create a new chart by adding SQL code to the open text box at the
+bottom. Copy and paste this code to generate a chart showing the marital status
+of bank customers by age:
+
+```
+%sql
+select age, marital, count(1) value
+from bank
+group by age, marital
+order by age, marital
+```
+
+Here is what happens when we hit play:
+
+![Table](https://screenshot.googleplex.com/vD3h2oijwFP.png)
+
+The default bar chart isn't exactly what we want -- the axes are wrong:
+
+![Bad chart](https://screenshot.googleplex.com/dBE8nfUb3N3.png)
+
+We need to modify the chart's settings to get the axes we want:
+
+![Open settings](https://screenshot.googleplex.com/RoiPvrisj9X.png)
+
+Play around with the builtin charts to find a graph you like. I personally
+prefer the "stacked" view:
+
+![Finished product](https://screenshot.googleplex.com/JTxZjBxObqE.png)
+
+### Modify the code
+
+The tutorial downloads `bank.csv` from s3 by default. Let's copy it to your GCS
+bucket. In a terminal (outside of Zeppelin), run these commands, replacing
+`<YOUR-BUCKET>` with your GCS bucket:
+
+```bash
+wget https://s3.amazonaws.com/apache-zeppelin/tutorial/bank/bank.csv
+gsutil cp bank.csv gs://<YOUR-BUCKET>/bank.csv
+```
+
+Now, back in Zeppelin, replace these lines of code:
+
+```scala
+import org.apache.commons.io.IOUtils
+import java.net.URL
+import java.nio.charset.Charset
+
+// Zeppelin creates and injects sc (SparkContext) and sqlContext (HiveContext or SqlContext)
+// So you don't need create them manually
+
+// load bank data
+val bankText = sc.parallelize(
+    IOUtils.toString(
+        new URL("https://s3.amazonaws.com/apache-zeppelin/tutorial/bank/bank.csv"),
+        Charset.forName("utf8")).split("\n"))
+```
+
+With (again replacing `<YOUR-BUCKET>`):
+
+```scala
+val bankText = sc.textFile("gs://<YOUR-BUCKET>/bank.csv")
+```
+
+Run the entire notebook with the "play" button at the top. All the charts should
+still be the same.
+
+![Notebook with first code
+change](https://screenshot.googleplex.com/XHdK53wX9vf.png)
+
+Newer versions of Spark can infer the schema and column names from CSV files. We
+can actually replace all of the code in the first box with this:
+
+```scala
+val bank = spark.read
+  .option("header", "true")
+  .option("inferSchema", "true")
+  .option("delimiter", ";")
+  .csv("gs://<YOUR-BUCKET>/bank.csv")
+bank.registerTempTable("bank")
+```
+
+Again, run the entire notebook with the "play" button at the top. All the charts
+should still be the same.
+
+![Notebook with second code
+change](https://screenshot.googleplex.com/MfVi5V1zPdZ.png)
+
+### Create a report
+
+We're currently in the "default" (code editing) view. Switch to the "report"
+view for a shiny report with just the graphs.
+
+![Where to click](https://screenshot.googleplex.com/7n9TQnsGGsT.png)
+
+![Yay](https://screenshot.googleplex.com/RgKaK7LZOoC.png)
+
+You could use Zeppelin as a replacement for Excel/Sheets!
+
+## Clean up
+
+Great -- you've probably:
+
+*   Used Zeppelin for the first time
+*   Used Spark for the first time
+*   Used the Scala language for the first time
+
+Feel free to continue exploring on your own!
+
+*   [Use the BigQuery
+    interpreter](https://zeppelin.apache.org/docs/latest/interpreter/bigquery.html)
+*   [Write your own charts with
+    Angular](https://zeppelin.apache.org/docs/latest/displaysystem/front-end-angular.html)
+*   Try the "R" language and R Spark (Zeppelin home page -> R tutorial)
+
+For now, let's delete our Dataproc cluster:
+
+```bash
+gcloud dataproc clusters delete zeppelin
+```
+
+## Appendix -- Troubleshooting
+
+### Cannot ssh (password prompt)
+
+```
+$ gcloud compute ssh zeppelin --ssh-flag="-nND 1080"
+Enter passphrase for key '/home/karthikpal/.ssh/google_compute_engine':
+```
+
+This means you earlier used `gcloud compute ssh` and set a passphrase on the key
+it generated. If you don't remember the passphrase, just delete old key pair:
+
+```bash
+rm ~/.ssh/google_compute_engine*
+```
+
+Now, when you `gcloud compute ssh` it will prompt you for a password. Hit
+`<enter>` to avoid setting a passphrase:
+
+```
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/karthikpal/.ssh/google_compute_engine): [Press enter key]
+Enter passphrase (empty for no passphrase): [Press enter key]
+Enter same passphrase again: [Press enter key]
+Your identification has been saved in /home/karthikpal/.ssh/google_compute_engine.
+Your public key has been saved in /home/karthikpal/.ssh/google_compute_engine.pub.
+The key fingerprint is:
+5f:ad:40:00:8a:d1:9b:99:b3:b0:f8:08:99:c3:ed:d3 foo@bar.com
+The key's randomart image is:
++--[ RSA 2048]----+
+|        ..oooE.++|
+|         o. o.o  |
+|          ..   . |
+|         o  . . o|
+|        S .  . + |
+|       . .    . o|
+|      . o o    ..|
+|       + +       |
+|        +.       |
++-----------------+
+```
+
+### "Open failed"
+
+```
+$ /usr/bin/google-chrome --proxy-server="socks5://localhost:1080" --host-resolver-rules="MAP * 0.0.0.0 , EXCLUDE localhost" --user-data-dir=/tmp http://zeppelin-m:8080
+channel 15: open failed: administratively prohibited: open failed
+channel 16: open failed: administratively prohibited: open failed
+channel 17: open failed: administratively prohibited: open failed
+```
+
+This may or not be an issue -- it just indicates that Chrome could not load a
+page that you navigated to. If you can see the Zeppelin UI, you can ignore this
+error.
+
+If you cannot view the Zeppelin UI:
+
+*   Ensure that the ssh command to create a SOCKS proxy succeeded
+*   Ensure that BeyondCorp is set to "Off: System/Alternative"
+*   Ensure that you are viewing the right page (for this tutorial:
+    `http://zeppelin-m:8080`)
+
+### Could not find resource
+
+```
+$ gcloud compute ssh zeppelin --ssh-flag="-nND 1080"
+ERROR: (gcloud.compute.ssh) Could not fetch resource:
+ - The resource 'projects/google.com:hadoop-cloud-dev/zones/us-east1-d/instances/zeppelin' was not found
+```
+
+This indicates that the GCE instance specified in the command was not found. In
+this example, I incorrectly used `zeppelin` (the Dataproc cluster name) instead
+of `zeppelin-m` (the master GCE instance).
+
+It is also possible that creating a Datparoc cluster failed. Type `gcloud
+dataproc clusters describe zeppelin` to check its status. The output of
+`describe` also contains the master instance name (which will be `${CLUSTER}-m`
+for non-HA clusters).
+
+### Operation timed out
+
+```
+$ gcloud compute ssh zeppelin --ssh-flag="-nND 1080"
+ssh: connect to host <HOST_IP> port 22: Operation timed out
+ ERROR: (gcloud.compute.ssh) [/usr/local/bin/ssh] exited with return code [255]
+```
+
+This indicates that the connection is not allowed by firewall rules. E.g., if
+your project belongs to Google.com org, no ssh from external networks is allowed
+by default (go/gce-enforcer). You can create a firewall rule for your IP (but
+please be aware, firewall rules might be automatically deleted by a watchdog
+that periodically checks all projects that belong to the Google-org):
+
+```
+IP=$(wget -qO - http://ipecho.net/plain; echo)
+gcloud compute --project=YOUR_PROJECT firewall-rules create zeppelin-rules
+  --direction=INGRESS --priority=1000 --network=default --action=ALLOW
+  --rules=tcp:22 --source-ranges=$IP
+```
+
+An alternate solution is to [Chromote](http://go/chromote) into a workstation on
+the corp network, then run the `ssh` and `google-chrome` commands from that
+machine.
+
+Note: using Cloudtop if you are outside the corp network will not work because
+it is also bound by GCE Enforcer's firewall rules.
+                                                                                
