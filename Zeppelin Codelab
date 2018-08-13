@@ -22,13 +22,9 @@ gcloud dataproc clusters create zeppelin --initialization-actions gs://dataproc-
 
 ## Open the Zeppelin UI
 
-Note: If you have any issues accessing the UI check the [Troubleshooting
-section](#appendix-troubleshooting) or contact karthikpal@.
-
 The
 [instructions](https://cloud.google.com/dataproc/docs/concepts/cluster-web-interfaces)
-vary by OS. Note that this is not supported on corp Chromebooks, which cannot be
-configured to use a proxy other than UberProxy.
+vary by OS.
 
 **On Linux (in two terminals)**:
 
@@ -61,146 +57,17 @@ Terminal 2:
 If the previous commands succeeded, a new Chrome window should have popped up.
 If not, see the Appendix below for debugging tips.
 
-You will see this error until BeyondCorp is disabled. If you do not see the
-error initially, you may see it when navigating to another page.
-
-![Not found](https://screenshot.googleplex.com/8KboPMoNixi.png)
-
-**You must disable BeyondCorp and set it to "Off: System/Alternative". This way,
-Chrome will respect the SOCKS proxy we configured it to use.**
-
-![System/Alternative](https://screenshot.googleplex.com/jU2kfMmXUL4.png)
-
-**You should now be able to view the Zeppelin UI!**
-
-![Yay](https://screenshot.googleplex.com/y0UB4MJk4vD.png)
-
 ## Walk through builtin tutorial
-
-![Click on tutorial](https://screenshot.googleplex.com/Cs7TgroWhHZ.png)
 
 Click "Save" to enable all interpreters.
 
-![Click Save](https://screenshot.googleplex.com/xzcX3KqMQrx.png)
-
 Then, click the "play" button at the top to run the whole notebook. You can also
 use the play button on a note to just re-run that note.
-
-![Run notebook](https://screenshot.googleplex.com/D3ORfAtoMiF.png)
-
-### Play with the charts
-
-We can change the max age to 100 in the first chart. Change:
-
-```
-where age < 30
-```
-
-to
-
-```
-where age < 100
-```
-
-Then, hit the play button (on the note) to regenerate the graph.
-
-![Max age 100 graph](https://screenshot.googleplex.com/oyi24DG2LjS.png)
-
-We can also create a new chart by adding SQL code to the open text box at the
-bottom. Copy and paste this code to generate a chart showing the marital status
-of bank customers by age:
-
-```
-%sql
-select age, marital, count(1) value
-from bank
-group by age, marital
-order by age, marital
-```
-
-Here is what happens when we hit play:
-
-![Table](https://screenshot.googleplex.com/vD3h2oijwFP.png)
-
-The default bar chart isn't exactly what we want -- the axes are wrong:
-
-![Bad chart](https://screenshot.googleplex.com/dBE8nfUb3N3.png)
-
-We need to modify the chart's settings to get the axes we want:
-
-![Open settings](https://screenshot.googleplex.com/RoiPvrisj9X.png)
-
-Play around with the builtin charts to find a graph you like. I personally
-prefer the "stacked" view:
-
-![Finished product](https://screenshot.googleplex.com/JTxZjBxObqE.png)
-
-### Modify the code
-
-The tutorial downloads `bank.csv` from s3 by default. Let's copy it to your GCS
-bucket. In a terminal (outside of Zeppelin), run these commands, replacing
-`<YOUR-BUCKET>` with your GCS bucket:
-
-```bash
-wget https://s3.amazonaws.com/apache-zeppelin/tutorial/bank/bank.csv
-gsutil cp bank.csv gs://<YOUR-BUCKET>/bank.csv
-```
-
-Now, back in Zeppelin, replace these lines of code:
-
-```scala
-import org.apache.commons.io.IOUtils
-import java.net.URL
-import java.nio.charset.Charset
-
-// Zeppelin creates and injects sc (SparkContext) and sqlContext (HiveContext or SqlContext)
-// So you don't need create them manually
-
-// load bank data
-val bankText = sc.parallelize(
-    IOUtils.toString(
-        new URL("https://s3.amazonaws.com/apache-zeppelin/tutorial/bank/bank.csv"),
-        Charset.forName("utf8")).split("\n"))
-```
-
-With (again replacing `<YOUR-BUCKET>`):
-
-```scala
-val bankText = sc.textFile("gs://<YOUR-BUCKET>/bank.csv")
-```
-
-Run the entire notebook with the "play" button at the top. All the charts should
-still be the same.
-
-![Notebook with first code
-change](https://screenshot.googleplex.com/XHdK53wX9vf.png)
-
-Newer versions of Spark can infer the schema and column names from CSV files. We
-can actually replace all of the code in the first box with this:
-
-```scala
-val bank = spark.read
-  .option("header", "true")
-  .option("inferSchema", "true")
-  .option("delimiter", ";")
-  .csv("gs://<YOUR-BUCKET>/bank.csv")
-bank.registerTempTable("bank")
-```
-
-Again, run the entire notebook with the "play" button at the top. All the charts
-should still be the same.
-
-![Notebook with second code
-change](https://screenshot.googleplex.com/MfVi5V1zPdZ.png)
 
 ### Create a report
 
 We're currently in the "default" (code editing) view. Switch to the "report"
 view for a shiny report with just the graphs.
-
-![Where to click](https://screenshot.googleplex.com/7n9TQnsGGsT.png)
-
-![Yay](https://screenshot.googleplex.com/RgKaK7LZOoC.png)
 
 You could use Zeppelin as a replacement for Excel/Sheets!
 
